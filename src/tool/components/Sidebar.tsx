@@ -1,68 +1,95 @@
-import React from 'react';
-import { ToolState } from '../types';
+'use client';
+
+import { useState } from 'react';
+import { PRESETS, toCssSnippet, toCssTiming, mirrorCurve, reverseCurve } from '../tool-definition';
+import type { EasingState } from '../types';
 
 interface SidebarProps {
-  state: ToolState;
-  onChange: (state: ToolState) => void;
+  state: EasingState;
+  onApply: (next: EasingState) => void;
+  onReset: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ state, onChange }) => {
+type CopyTarget = 'timing' | 'snippet';
+
+export function EasingSidebar({ state, onApply, onReset, onUndo, canUndo }: SidebarProps) {
+  const [copied, setCopied] = useState<CopyTarget | null>(null);
+
+  const copy = async (target: CopyTarget) => {
+    const text = target === 'timing' ? toCssTiming(state) : toCssSnippet(state);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(target);
+      window.setTimeout(() => setCopied(null), 1500);
+    } catch {
+      setCopied(null);
+    }
+  };
+
   return (
-    <div className="p-4 space-y-6 text-sm bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 h-full overflow-y-auto">
-      <div>
-        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Settings</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Indentation Spaces
-            </label>
-            <select
-              value={state.indent}
-              onChange={(e) => onChange({ ...state, indent: Number(e.target.value) })}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+    <aside className="easing-sidebar" data-testid="easing-sidebar">
+      <section className="easing-sidebar-section">
+        <h3>Presets</h3>
+        <div className="easing-preset-grid">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className="easing-preset-button"
+              data-testid={`preset-${preset.id}`}
+              onClick={() => onApply({ ...preset.state })}
             >
-              <option value={2}>2 spaces</option>
-              <option value={4}>4 spaces</option>
-            </select>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Auto-convert</span>
-            <input
-              type="checkbox"
-              checked={state.autoConvert}
-              onChange={(e) => onChange({ ...state, autoConvert: e.target.checked })}
-              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-            />
-          </div>
+              {preset.label}
+            </button>
+          ))}
         </div>
-      </div>
+      </section>
 
-      <div>
-        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Samples</h3>
-        <div className="space-y-2">
+      <section className="easing-sidebar-section">
+        <h3>Utilities</h3>
+        <div className="easing-util-row">
           <button
-            onClick={() => onChange({
-              ...state,
-              mode: 'yaml-to-json',
-              input: 'server:\n  host: localhost\n  port: 8080\n  enabled: true\ndatabase:\n  url: postgres://localhost/db',
-            })}
-            className="w-full text-left px-3 py-2 text-xs rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            type="button"
+            data-testid="mirror-curve"
+            onClick={() => onApply(mirrorCurve(state))}
           >
-            Sample YAML Config
+            Mirror
           </button>
           <button
-            onClick={() => onChange({
-              ...state,
-              mode: 'json-to-yaml',
-              input: '{\n  "users": [\n    { "id": 1, "name": "Alice" },\n    { "id": 2, "name": "Bob" }\n  ]\n}',
-            })}
-            className="w-full text-left px-3 py-2 text-xs rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            type="button"
+            data-testid="reverse-curve"
+            onClick={() => onApply(reverseCurve(state))}
           >
-            Sample JSON Data
+            Reverse
+          </button>
+          <button type="button" data-testid="undo-curve" onClick={onUndo} disabled={!canUndo}>
+            Undo
+          </button>
+          <button type="button" data-testid="reset-curve" onClick={onReset}>
+            Reset
           </button>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section className="easing-sidebar-section">
+        <h3>Output</h3>
+        <pre className="easing-output" data-testid="css-snippet">
+          {`transition-timing-function: ${toCssTiming(state)};`}
+        </pre>
+        <button type="button" data-testid="copy-timing" onClick={() => copy('timing')}>
+          {copied === 'timing' ? 'Copied!' : 'Copy timing function'}
+        </button>
+        <pre className="easing-output" data-testid="css-full-snippet">
+          {toCssSnippet(state)}
+        </pre>
+        <button type="button" data-testid="copy-snippet" onClick={() => copy('snippet')}>
+          {copied === 'snippet' ? 'Copied!' : 'Copy transition snippet'}
+        </button>
+      </section>
+    </aside>
   );
-};
+}
+
+export default EasingSidebar;

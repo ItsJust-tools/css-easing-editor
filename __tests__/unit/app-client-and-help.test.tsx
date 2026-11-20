@@ -61,16 +61,17 @@ vi.mock('@/tool', () => ({
     theme: { brand: 'Notepad' },
   },
   templateBaseVersion: '1.1.0',
-  ToolCanvas: ({ text }: { text: string }) => <div>canvas:{text}</div>,
-  ToolToolbar: () => <div>toolbar</div>,
-  ToolSidebar: ({ text }: { text: string }) => <div>sidebar:{text}</div>,
+  EasingCanvas: ({ state }: { state: unknown }) => <div>canvas:{JSON.stringify(state)}</div>,
+  EasingToolbar: () => <div>toolbar</div>,
+  EasingSidebar: () => <div>sidebar</div>,
 }));
 
-vi.mock('@/tool/notepad-state', () => ({
-  notepadTool: {
+vi.mock('@/tool/tool-definition', () => ({
+  easingTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { content: 'From Shared Url', title: '' } }),
+    deserialize: () => ({ success: true, data: { p1: { x: 0, y: 0 }, p2: { x: 1, y: 1 } } }),
   },
+  DEFAULT_STATE: { p1: { x: 0, y: 0 }, p2: { x: 1, y: 1 } },
 }));
 
 describe('app client and help page', () => {
@@ -93,12 +94,11 @@ describe('app client and help page', () => {
     expect(screen.getByTestId('dynamic-tool-client')).toBeInTheDocument();
   });
 
-  it('handles share flow in tool client', async () => {
+  it('renders tool client shell', async () => {
     render(<ToolClient />);
 
     expect(screen.getByText('toolbar')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('trigger-share'));
-
-    expect(mockToast).toHaveBeenCalled();
+    expect(screen.getByText('sidebar')).toBeInTheDocument();
+    expect(screen.getByText(/canvas:/)).toBeInTheDocument();
   });
 });

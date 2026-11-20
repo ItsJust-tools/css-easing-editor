@@ -1,10 +1,21 @@
 export { default as toolConfig } from './tool.config';
-export { templateBaseVersion } from './tool.config';
+export { templateBaseVersion, toolConfig as toolConfigNamed } from './tool.config';
 export { templateMetadata, getPublicSiteUrl } from './template-metadata';
-export { yamlToJsonTool, convert, YamlToJsonToolDefinition } from './tool-definition';
+export {
+  easingTool,
+  easingToolDefinition,
+  DEFAULT_STATE,
+  PRESETS,
+  toCssTiming,
+  toCssSnippet,
+  mirrorCurve,
+  reverseCurve,
+  normalizeState,
+  formatCoord,
+  makePreset,
+} from './tool-definition';
 export { notepadTool } from './notepad-state';
-export { ToolCanvas } from './components/tool-canvas';
-export { ToolToolbar } from './components/tool-toolbar';
-export { ToolSidebar } from './components/tool-sidebar';
-export type { NotepadState } from './notepad-state';
-export type { ToolState, ConversionMode } from './types';
+export { EasingCanvas } from './components/Canvas';
+export { EasingToolbar } from './components/Toolbar';
+export { EasingSidebar } from './components/Sidebar';
+export type { EasingState, BezierPoint, Preset, PresetId } from './types';

@@ -1,160 +1,99 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ToolShell, useTool, ImportExport } from '@itsjust/core';
-import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import {
   toolConfig,
   templateBaseVersion,
-  ToolCanvas,
-  ToolToolbar,
-  ToolSidebar,
+  EasingCanvas,
+  EasingToolbar,
+  EasingSidebar,
 } from '@/tool';
-import { notepadTool as notepadToolDef, type NotepadState } from '@/tool/notepad-state';
+import { easingTool, DEFAULT_STATE, type EasingState } from '@/tool/tool-definition';
+import type { EasingState as EasingStateType } from '@/tool/types';
 
-const DEFAULT_FONT_SIZE = 16;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 72;
+const HISTORY_LIMIT = 50;
 
 export default function ToolClient() {
-  const ToolShellCompat = ToolShell as unknown as ComponentType<Record<string, unknown>> & {
-    Toolbar?: ComponentType<{ children?: ReactNode }>;
-    Body?: ComponentType<{ children?: ReactNode }>;
-    Sidebar?: ComponentType<{ children?: ReactNode }>;
-    Canvas?: ComponentType<{ children?: ReactNode }>;
-    StatusBar?: ComponentType<{ children?: ReactNode }>;
-  };
+  const ToolShellCompat = ToolShell as unknown as ComponentType<Record<string, unknown>>;
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool<NotepadState>(notepadToolDef, canvasRef);
+  const tool = useTool<EasingState>(easingTool, canvasRef);
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
-  const [isSharing, setIsSharing] = useState(false);
-  const hasLoadedSharedState = useRef(false);
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(
-    () => typeof window !== 'undefined' && window.innerWidth > 768 && toolConfig.features.sidebar
+  const [history, setHistory] = useState<EasingState[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth > 768
   );
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  const state = tool.state.data;
 
-  const title = tool.state.data.title?.trim() || toolConfig.name;
-
-  useEffect(() => {
-    document.title = title;
-  }, [title]);
-
-  const handleTextChange = useCallback(
-    (text: string) => {
-      setToolData((prev) => ({ ...prev, content: text }));
-    },
-    [setToolData]
-  );
-
-  const handleFontSizeChange = useCallback((delta: number) => {
-    setFontSize((prev) => Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, prev + delta)));
+  const pushHistory = useCallback((prev: EasingStateType) => {
+    setHistory((h) =>
+      [...h, { ...prev, p1: { ...prev.p1 }, p2: { ...prev.p2 } }].slice(-HISTORY_LIMIT)
+    );
   }, []);
 
-  useEffect(() => {
-    if (hasLoadedSharedState.current) return;
-    hasLoadedSharedState.current = true;
-    const params = new URLSearchParams(window.location.search);
-    const encodedState = params.get('state');
-    if (!encodedState) return;
-    try {
-      const serialized = decompressFromEncodedURIComponent(encodedState);
-      if (!serialized) throw new Error('Invalid shared URL');
-      const parsed: unknown = JSON.parse(serialized);
-      const deserialized = notepadToolDef.deserialize(parsed);
-      if (!deserialized.success) throw new Error(deserialized.error);
-      setToolData(deserialized.data);
-      showToast('Loaded state from shared URL', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load shared URL';
-      showToast(message, 'error');
-    }
-  }, [setToolData, showToast]);
+  const applyChange = useCallback(
+    (next: EasingStateType) => {
+      setToolData((prev: EasingStateType) => {
+        pushHistory(prev);
+        return next;
+      });
+    },
+    [pushHistory, setToolData]
+  );
 
-  const handleShare = useCallback(async () => {
-    setIsSharing(true);
-    try {
-      const serialized = notepadToolDef.serialize(tool.state.data);
-      const encodedState = compressToEncodedURIComponent(serialized);
-      if (!encodedState) throw new Error('Failed to encode state for URL');
-      const url = new URL(window.location.href);
-      url.searchParams.set('state', encodedState);
-      url.searchParams.set('tool', toolConfig.id);
-      window.history.replaceState(null, '', url.toString());
+  const applyUpdater = useCallback(
+    (updater: (prev: EasingStateType) => EasingStateType) => {
+      setToolData((prev: EasingStateType) => {
+        pushHistory(prev);
+        return updater(prev);
+      });
+    },
+    [pushHistory, setToolData]
+  );
 
-      const shareUrl = url.toString();
-      if (navigator.share) {
-        try {
-          await navigator.share({ title, url: shareUrl });
-          showToast('Shared URL ready', 'success');
-          return;
-        } catch (error) {
-          if (error instanceof Error && error.name === 'AbortError') return;
-        }
-      }
-      await navigator.clipboard.writeText(shareUrl);
-      showToast('Share URL copied to clipboard', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create share URL';
-      showToast(message, 'error');
-    } finally {
-      setIsSharing(false);
-    }
-  }, [showToast, tool.state.data, title]);
+  const handleUndo = useCallback(() => {
+    setHistory((h) => {
+      if (h.length === 0) return h;
+      const previous = h[h.length - 1]!;
+      setToolData(() => previous);
+      return h.slice(0, -1);
+    });
+  }, [setToolData]);
+
+  const handleReset = useCallback(() => {
+    setToolData((prev: EasingStateType) => {
+      pushHistory(prev);
+      return { ...DEFAULT_STATE, p1: { ...DEFAULT_STATE.p1 }, p2: { ...DEFAULT_STATE.p2 } };
+    });
+  }, [pushHistory, setToolData]);
 
   const toolbarContent = (
     <>
-      <ToolToolbar />
+      <EasingToolbar state={state} onChange={applyUpdater} />
       <ImportExport
         formats={tool.supportedFormats}
         onExport={tool.handleExport}
         onImport={tool.importFromFile}
         isImporting={tool.isImporting}
-        onShare={handleShare}
-        isSharing={isSharing}
       />
     </>
   );
 
   const sidebarContent = (
-    <ToolSidebar text={tool.state.data.content} fontSize={fontSize} onFontSizeChange={handleFontSizeChange} />
-  );
-
-  const canvasContent = (
-    <ToolCanvas
-      canvasRef={canvasRef}
-      text={tool.state.data.content}
-      fontSize={fontSize}
-      onChange={handleTextChange}
+    <EasingSidebar
+      state={state}
+      onApply={applyChange}
+      onReset={handleReset}
+      onUndo={handleUndo}
+      canUndo={history.length > 0}
     />
   );
 
+  const canvasContent = <EasingCanvas state={state} onChange={applyChange} />;
+
   const statusBarContent = (
     <>
-      <span
-        className={`status-slot status-slot-state ${tool.state.isDirty ? 'status-unsaved' : 'status-saved'}`}
-      >
-        {tool.state.isDirty ? (
-          <>
-            <span className="status-saving-dot" />
-            Unsaved
-          </>
-        ) : tool.state.lastSaved ? (
-          <>Saved {tool.state.lastSaved}</>
-        ) : (
-          'Ready'
-        )}
-      </span>
-      <span className="status-slot status-slot-font-size">{fontSize}px</span>
       <span className="status-slot status-slot-tool-version">Tool v{toolConfig.version}</span>
       <span className="status-slot status-slot-template-version">
         Template v{templateBaseVersion}
@@ -162,17 +101,9 @@ export default function ToolClient() {
     </>
   );
 
-  const hasLegacySections = Boolean(
-    ToolShellCompat.Toolbar &&
-    ToolShellCompat.Body &&
-    ToolShellCompat.Sidebar &&
-    ToolShellCompat.Canvas &&
-    ToolShellCompat.StatusBar
-  );
-
   return (
     <ToolShellCompat
-      config={toolConfig}
+      config={toolConfig as unknown as Record<string, unknown>}
       actions={useMemo(() => tool.toolbarActions, [tool.toolbarActions])}
       sidebarOpen={sidebarOpen}
       onSidebarChange={setSidebarOpen}
@@ -181,31 +112,7 @@ export default function ToolClient() {
       canvas={canvasContent}
       statusBar={statusBarContent}
     >
-      {hasLegacySections
-        ? (() => {
-            const ToolbarSection = ToolShellCompat.Toolbar as ComponentType<{
-              children?: ReactNode;
-            }>;
-            const BodySection = ToolShellCompat.Body as ComponentType<{ children?: ReactNode }>;
-            const SidebarSection = ToolShellCompat.Sidebar as ComponentType<{
-              children?: ReactNode;
-            }>;
-            const CanvasSection = ToolShellCompat.Canvas as ComponentType<{ children?: ReactNode }>;
-            const StatusBarSection = ToolShellCompat.StatusBar as ComponentType<{
-              children?: ReactNode;
-            }>;
-            return (
-              <>
-                <ToolbarSection>{toolbarContent}</ToolbarSection>
-                <BodySection>
-                  <SidebarSection>{sidebarContent}</SidebarSection>
-                  <CanvasSection>{canvasContent}</CanvasSection>
-                </BodySection>
-                <StatusBarSection>{statusBarContent}</StatusBarSection>
-              </>
-            );
-          })()
-        : null}
+      {null as unknown as ReactNode}
     </ToolShellCompat>
   );
 }
